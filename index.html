@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <link rel="stylesheet" type="text/css" href="./common.css" />
+    <!--<link rel="stylesheet" type="text/css" href="./design.css" />-->
+    <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?&skin=sons-of-obsidian&lang-cs"></script>
+</head>
+
+<body>
+    <h1>ポートフォリオ</h1>
+    <h3>自己紹介</h3>
+    <table>
+        <tr>
+            <th>名前</th>
+            <td><ruby>Arga Prahayasa Anugrah<rt>アルガ　プラハヤサ　アヌグラー</rt></ruby></td>
+        </tr>
+        <tr>
+            <th>出身校</th>
+            <td><ruby>東京デザインテクノロジーセンター専門学校<rt>Tech.C.</rt></ruby></td>
+        </tr>
+        <tr>
+            <th>趣味</th>
+            <td>**********************</td>
+        </tr>
+    </table>
+    <h3>成果物</h3>
+    <table>
+        <tr>
+            <th>タイトル</th>
+            <td>倉庫番</td>
+        </tr>
+        <tr>
+            <th>プログラム概要</th>
+            <td>倉庫番を２Ｄで作成。シンプルなゲーム感を出す。</td>
+        </tr>
+        <tr>
+            <th>使用言語・ソフト</th>
+            <td>Unity を使用し、Visual Studio Code を使い windows 上で記述・デバッグ。</td>
+        </tr>
+    </table>
+    <h4>ソースコード</h4>
+
+    <div onclick="obj=document.getElementById('menu1').style; obj.display=(obj.display=='none')?'block':'none';">
+        <a style="cursor:pointer;">▼ LevelManager.csソースコード</a>
+    </div>
+
+    <div id="menu1" style="display:none;clear:both;">
+        <div class="rollbox">
+        <pre><code class="prettyprint lang-js">
+        using System.Collections;
+        using System.Collections.Generic;
+        using UnityEngine;
+        using UnityEngine.UI;
+
+        public class LevelManager : SingletonMonoBehaviour<LevelManager>
+        {
+            public GameObject floorPrefab,wallPrefab,boxPrefab,playerPrefab,goalPrefab,gameOverPanel,PlayerObj;
+            public Canvas canvas;
+
+            [SerializeField]
+            List<string> LevelIndex;  // base to create the stage
+            [SerializeField]
+            List<int> LevelData;    // marking tiles type(wall,floor or goal)
+            public List<GameObject> ObjectPos; // keeping object (box)
+
+            public float Offset;
+            public int PlayerStartPos;
+            public bool CanMove;
+            int cols,rows,boxCount,goalCount,goalInCount,undoCount,NoMove;
+
+            void Start()
+            {
+                CanMove = true;
+                gameOverPanel.SetActive(false);
+                undoCount = 3;
+                ReadLevel();
+            }
+
+
+            //read stage from text then create level array
+            void ReadLevel()
+            {
+                TextAsset textFile = Resources.Load("level") as TextAsset;
+                string[] str = textFile.text.Split(new[] {'\r', '\n'}, System.StringSplitOptions.RemoveEmptyEntries);
+                string[] str1 = str[0].Split(';');
+
+                for (int i = 0; i < str.Length; i++)
+                {
+                    str1 = str[i].Split(';');
+                    for(int j = 0; j < str1.Length; j++)
+                    {
+                        LevelIndex.Add (str1 [j]);
+                        if(str1 [j]=="$"){boxCount++;}
+                        LevelData.Add (j);
+                    }
+                }
+
+                cols = str.Length;
+                rows = str1.Length;
+                PlayerPrefs.SetInt("LevelSize",LevelIndex.Count);
+                PlayerPrefs.SetInt("ColNum",cols);
+                PlayerPrefs.SetInt("RowNum",rows);
+                CreateStage();
+            }
+
+            //create level from level array
+            void CreateStage()
+            {
+                MemorizeBoxPos = new int[boxCount,undoCount];
+                boxCount = 0;
+                float x = Offset/2;
+                float y = -(Offset/2);
+                SpriteRenderer sr;
+                for (int i =0; i < LevelIndex.Count; i++)
+                {
+                    if (i > 0 && i % rows == 0) {
+                        y -= Offset;
+                        x = Offset/2;
+                    }
+
+                    // create wall
+                    if (LevelIndex[i] == "#")
+                    {
+                        GameObject Wall = (GameObject)Instantiate(wallPrefab);
+                        Wall.transform.position = centering(x, y);
+                        Wall.transform.SetParent(canvas.transform);
+                        ObjectPos.Add(null);
+                        LevelData[i] = 1;   // mark tile as wall (1)
+                    }
+
+                    // create goal
+                    else if(LevelIndex[i] == ".")
+                    {
+                        goalCount++;
+                        GameObject Goal = (GameObject)Instantiate(goalPrefab);
+                        Goal.transform.position = centering(x, y);
+                        Goal.transform.SetParent(canvas.transform);
+                        ObjectPos.Add(null);
+                        LevelData[i] = 2;   // mark tile as goal (2)
+                    }
+
+                    // create floor
+                    else
+                    {
+                        GameObject Floor = (GameObject)Instantiate(floorPrefab);
+                        Floor.transform.localPosition = centering(x, y);
+                        Floor.transform.SetParent(canvas.transform);
+                        ObjectPos.Add(null);
+                        LevelData[i] = 0;  // mark tile as floor/blank (0)
+                    }
+
+                    // placing player
+                    if (LevelIndex[i] == "@")
+                    {
+                        GameObject Player = (GameObject)Instantiate(playerPrefab);
+                        Player.transform.localPosition = centering(x, y);
+                        sr = Player.GetComponent<SpriteRenderer>();
+                        sr.sortingOrder =1;
+                        Player.transform.SetParent(canvas.transform);
+                        PlayerStartPos = i;
+                        // PlayerPrefs.SetInt("PlayerPos",i);
+                        ObjectPos.Add(null);
+                        MemorizePlayerPos.Add(i);
+                    }
+                    else if(LevelIndex[i] == "$")
+                    {
+
+                        GameObject Box = (GameObject)Instantiate(boxPrefab);
+                        Box.transform.localPosition = centering(x, y);
+                        sr = Box.GetComponent<SpriteRenderer>();
+                        sr.sortingOrder=1;
+                        Box.transform.SetParent(canvas.transform);
+                        ObjectPos[i] = Box;
+                        MemorizeBoxPos[boxCount,0]= i;
+                        boxCount++;
+                    }
+
+                x += Offset;
+                }
+
+                if (boxCount < goalCount)
+                {
+                    Debug.Log("Level Error");
+                }
+            }
+
+            //positioning stage in center of the screen
+            Vector2 centering(float x, float y)
+            {
+                return new Vector2(x-(rows*Offset/2),y+(cols*Offset/2));
+            }
+
+            //check if tile is wall
+            public bool IsWall (int numPos)
+            {
+                if(LevelData[numPos] == 1)
+                {
+                    return true;
+                }
+                return false;
+            }
+
+            //check if tile is occupied (by box)
+            public bool Occupied(int numPos)
+            {
+                if(ObjectPos[numPos])
+                {
+                    return true;
+                }
+                return false;
+            }
+
+            // check if box is on the goal
+            void GoalIn (int pos, int target)
+            {
+                if(LevelData[target] == 2 && ObjectPos[target])
+                {
+                    goalInCount++;
+                    if(goalInCount == goalCount)
+                    {
+                        StartCoroutine(GameClear());
+                    }
+                }
+                else if (LevelData[pos] == 2 && !ObjectPos[pos])
+                {
+                    goalInCount--;
+                }
+            }
+
+            // game clear window
+            IEnumerator GameClear()
+            {   
+                CanMove = false;
+                yield return new WaitForSeconds(1);
+                gameOverPanel.SetActive(true);
+                ClearData();
+            }
+
+            void ClearData()
+            {
+                LevelIndex.Clear();
+                LevelData.Clear();
+                ObjectPos = null;
+            }
+
+            // move the box
+            public void MoveBox(int i, int direction, GameObject box)
+            {
+
+                switch(direction){
+                    // move box position up
+                    case 0:
+                    box.transform.Translate(0,Offset,0);            
+                    ObjectPos[i-rows]= box;
+                    ObjectPos[i] = null;
+                    GoalIn(i, i-rows);
+                    break;
+
+                    // move box position right
+                    case 1:
+                    box.transform.Translate(Offset,0,0);
+                    ObjectPos[i+1]= box;
+                    ObjectPos[i] = null;
+                    GoalIn(i, i+1);
+                    break;
+
+                    // move box position down
+                    case 2:
+                    box.transform.Translate(0,-Offset,0);
+                    ObjectPos[i+rows]= box;
+                    ObjectPos[i] = null;
+                    GoalIn(i, i+rows);
+                    break;
+
+                    // move box position left
+                    case 3:
+                    box.transform.Translate(-Offset,0,0);
+                    ObjectPos[i-1]= box;
+                    ObjectPos[i] = null;
+                    GoalIn(i, i-1);
+                    break;
+                }
+            }
+        }
+                </code>
+            </pre>
+        </div>
+    </div>
+
+
+    <div onclick="obj=document.getElementById('menu2').style; obj.display=(obj.display=='none')?'block':'none';">
+        <a style="cursor:pointer;">▼ PlayerScript.csソースコード</a>
+    </div>
+    <div id="menu2" style="display:none;clear:both;">
+            <div class="rollbox">
+
+        <pre><code class="prettyprint">
+        using System.Collections;
+        using System.Collections.Generic;
+        using UnityEngine;
+
+        public class PlayerScript : MonoBehaviour
+        {
+            private float offset;
+            private int playerPosition,levelSize,colNum,rowNum,targetPos,boxTargetPos;
+            private GameObject box;
+
+
+            void Start()
+            {
+                offset = LevelManager.instance.Offset;
+                playerPosition = LevelManager.instance.PlayerStartPos;
+                levelSize = PlayerPrefs.GetInt("LevelSize",0);
+                colNum = PlayerPrefs.GetInt("ColNum",0);
+                rowNum = PlayerPrefs.GetInt("RowNum",0);
+            }
+            void Update()
+            {
+                KeyPress();
+            }
+
+            private void KeyPress()
+            {
+                if(LevelManager.instance.CanMove)
+                {
+                    // try to move player up
+                    if(Input.GetKeyDown(KeyCode.UpArrow)){
+                        targetPos = playerPosition - rowNum;
+                        boxTargetPos = targetPos - rowNum;
+
+                        //check if target position is occupied (wall/box)
+                        if (targetPos > 0 && !LevelManager.instance.IsWall(targetPos))
+                        {
+
+                            // move box at target position (if posible), then move player up
+                            if (LevelManager.instance.Occupied(targetPos) && !LevelManager.instance.Occupied(boxTargetPos) && boxTargetPos > 0 && !LevelManager.instance.IsWall(boxTargetPos))
+                            {
+                                TryMoveBox(targetPos,0);
+                                MovePlayer(0);//up
+                            }
+
+                            // if target position is not occupied move player up
+                            else if (!LevelManager.instance.Occupied(targetPos))
+                            {
+                                MovePlayer(0);//up
+                            }
+                        }
+                    }
+
+                    // try to move player right
+                    else if(Input.GetKeyDown(KeyCode.RightArrow)){
+                        targetPos = playerPosition + 1;
+                        boxTargetPos = targetPos + 1;
+
+                        //check if target position is occupied (wall/box)   
+                        if (targetPos < levelSize && !LevelManager.instance.IsWall(targetPos))
+                        {
+
+                            // move box at target position (if posible), then move player right
+                            if (LevelManager.instance.Occupied(targetPos) && !LevelManager.instance.Occupied(boxTargetPos) && boxTargetPos < levelSize && !LevelManager.instance.IsWall(boxTargetPos))
+                            {
+                                TryMoveBox(targetPos,1);
+                                MovePlayer(1);//right
+                            }
+
+                            // if target position is not occupied move player right
+                            else if (!LevelManager.instance.Occupied(targetPos))
+                            {
+                                MovePlayer(1);//right
+                            }
+                        }
+                    }
+
+                    // try to move player down
+                    else if(Input.GetKeyDown(KeyCode.DownArrow)){
+                        targetPos = playerPosition + rowNum;
+                        boxTargetPos = targetPos + rowNum;
+
+                        //check if target position is occupied (wall/box)
+                        if (targetPos <= levelSize && !LevelManager.instance.IsWall(targetPos))
+                        {
+
+                            // move box at target position (if posible), then move player down
+                            if (LevelManager.instance.Occupied(targetPos) && !LevelManager.instance.Occupied(boxTargetPos) &&  boxTargetPos <= levelSize && !LevelManager.instance.IsWall(boxTargetPos))
+                            {
+
+                                TryMoveBox(targetPos,2);
+                                MovePlayer(2);//up
+                            }
+
+                            // if target position is not occupied move player down
+                            else if (!LevelManager.instance.Occupied(targetPos))
+                            {
+                                MovePlayer(2);//down
+                            }
+                        }
+                    }
+
+                    // try to move player left
+                    else if(Input.GetKeyDown(KeyCode.LeftArrow)){
+                        targetPos = playerPosition - 1;
+                        boxTargetPos = targetPos - 1;
+
+                        //check if target position is occupied (wall/box)
+                        if (targetPos > 0 && !LevelManager.instance.IsWall(targetPos))
+                        {
+
+                            // move box at target position (if posible), then move player left
+                            if (LevelManager.instance.Occupied(targetPos) && !LevelManager.instance.Occupied(boxTargetPos) && boxTargetPos > 0 && !LevelManager.instance.IsWall(boxTargetPos))
+                            {
+                                TryMoveBox(targetPos,3);
+                                MovePlayer(3);//left
+                            }
+
+                            // if target position is not occupied move player left
+                            else if (!LevelManager.instance.Occupied(targetPos))
+                            {                   
+                                MovePlayer(3);//left
+                            }
+                        }
+                    }
+                }
+            }
+
+            //move player according to direction
+            private void TryMoveBox(int targetPos, int direction)
+            {
+                box = LevelManager.instance.ObjectPos[targetPos];
+                LevelManager.instance.MoveBox(targetPos,direction,box);
+            }
+
+
+
+            //move player according to direction
+            private void MovePlayer(int direction)
+            {
+
+                switch(direction){
+                    case 0:
+                    playerPosition -= rowNum;
+                    transform.Translate(0,offset,0);
+                    break;
+                    case 1:
+                    playerPosition += 1;
+                    transform.Translate(offset,0,0);
+                    break;
+                    case 2:
+                    playerPosition += rowNum;
+                    transform.Translate(0,-offset,0);
+                    break;
+                    case 3:
+                    playerPosition -= 1;
+                    transform.Translate(-offset,0,0);
+                    break;
+                }
+            }
+
+        }
+
+
+    </code>
+    </pre>
+    </div>
+    </div>
+
+<!--
+    <div onclick="obj=document.getElementById('menu3').style; obj.display=(obj.display=='none')?'block':'none';">
+        <a style="cursor:pointer;">▼ BlinkTextView.csソースコード</a>
+    </div>
+    <div id="menu3" style="display:none;clear:both;">
+            <div class="rollbox">
+                    <pre><code class="prettyprint">
+    using System.Collections;
+    using System.Collections.Generic;
+    using UnityEngine;
+    
+    public class BlinkTextView : MonoBehaviour
+    {
+        //  点滅時間
+        [SerializeField]
+        private float blinkTime = 1;
+    
+        //  表示状態
+        private bool isDisp = true;
+    
+        //  点滅管理用タイマー
+        private float timer = 0;
+    
+        // Update is called once per frame
+        void Update()
+        {
+            //  タイマーを加算
+            timer += Time.deltaTime;
+            //  タイマーが点滅時間に達したら表示を変更する
+            if(timer > blinkTime)
+            {
+                //  タイマーをクリア
+                timer = 0;
+                //  現在表示中なら非表示にする（αを０に）
+                if (isDisp)
+                    GetComponent<CanvasGroup>().alpha = 0;
+                //  現在非表示中なら表示にする（αを１に）
+                else
+                    GetComponent<CanvasGroup>().alpha = 1;
+                //  状態フラグを反転させる
+                isDisp = !isDisp;
+            }
+        }
+    }
+    </code>
+    </pre>
+    </div>
+    </div>
+
+    <div onclick="obj=document.getElementById('menu4').style; obj.display=(obj.display=='none')?'block':'none';">
+        <a style="cursor:pointer;">▼ PanelsView.csソースコード</a>
+    </div>
+    <div id="menu4" style="display:none;clear:both;">
+            <div class="rollbox">
+        <pre><code class="prettyprint">
+    using System.Collections;
+    using System.Collections.Generic;
+    using UnityEngine;
+    
+    public class PanlesView : MonoBehaviour
+    {
+        //  パネルの番号を保持
+        private int panelNumber = 0;
+        //  パネルの番号を取得
+        public int PanelNumber { get { return panelNumber; } }
+    
+        //  マテリアルタイプ
+        public enum PutImageType
+        {
+            None = 0,
+            Maru,
+            Batu
+        }
+    
+        //  〇、×、何も表示しないの3種類のマテリアルを登録する
+        [SerializeField]
+        private List<Material> imageMaterials = new List<Material>();
+    
+        //  〇、×を表示するオブジェクトのメッシュレンダラー
+        [SerializeField]
+        private MeshRenderer childPanel;
+    
+        //  何も表示しない状態をデフォルトにする
+        private PutImageType putImageType = PutImageType.None;
+        public PutImageType PImgeType { get { return putImageType; } }
+    
+        //  パネルの番号を登録する
+        public void Init(int num)
+        {
+            panelNumber = num;
+        }
+    
+        /// <summary>
+        /// パネルに表示するイメージタイプを設定
+        /// </summary>
+        /// <param name="imageType">表示イメージタイプ</param>
+        public void SetImge(PutImageType imageType)
+        {
+            //  すでに設定したところには再設定できない
+            if (putImageType != PutImageType.None)
+                return;
+            putImageType = imageType;
+            //  メッシュレンダラーのマテリアルに選択したマテリアルを張り付ける
+            childPanel.material = imageMaterials[(int)putImageType];
+        }
+    
+        /// <summary>
+        /// パネルの画像をクリアする
+        /// </summary>
+        public void ClearImage()
+        {
+            putImageType = PutImageType.None;
+            //  メッシュレンダラーのマテリアルに選択したマテリアルを張り付ける
+            childPanel.material = imageMaterials[(int)putImageType];
+        }
+    }
+    </code>
+    </pre>
+    </div>
+    </div>
+-->
+
+
+    <h3>自分のスキルについて</h3>
+    <h4>*******************</h4>
+
+
+</body>
+
+</html>
