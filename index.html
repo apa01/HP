@@ -206,11 +206,13 @@ public class PlayerScript : MonoBehaviour
         colNum = PlayerPrefs.GetInt("ColNum",0);
         rowNum = PlayerPrefs.GetInt("RowNum",0);
     }
+    
     void Update()
     {
         KeyPress();
     }
     
+    //move player with arrow keys
     private void KeyPress()
     {
         if(LevelManager.instance.CanMove)
